@@ -104,18 +104,18 @@ export default function App() {
       {/* TOP FESTIVE HEADER */}
       <div style={{
         background: "linear-gradient(90deg, #c41e3a 0%, #ffd700 50%, #c41e3a 100%)",
-        padding: "6px 16px",
+        padding: "3px 8px",
         textAlign: "center",
         boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
-        borderBottom: "3px solid #0f3d1a",
+        borderBottom: "2px solid #0f3d1a",
       }}>
-        <div style={{ fontSize: 14, fontWeight: "bold", color: "#0f3d1a", letterSpacing: 1 }}>
+        <div style={{ fontSize: 11, fontWeight: "bold", color: "#0f3d1a", letterSpacing: 0.5 }}>
           🎄 ✨ 🎅 CHRISTMAS REMOTE ✨ 🎄
         </div>
         <div style={{
-          fontSize: 12,
+          fontSize: 10,
           color: "#fff",
-          marginTop: 2,
+          marginTop: 1,
           fontStyle: "italic",
           fontWeight: "bold",
           animation: "pulse 2s infinite",
@@ -136,8 +136,8 @@ export default function App() {
           display: "flex",
           flexDirection: "row",
           flex: 1,
-          padding: "8px",
-          gap: "8px",
+          padding: "4px",
+          gap: "4px",
           overflow: "hidden",
         }}
       >
@@ -145,12 +145,12 @@ export default function App() {
         <div style={{ 
           flex: 1,
           background: "rgba(255, 255, 255, 0.96)", 
-          borderRadius: 16,
-          padding: "12px",
+          borderRadius: 12,
+          padding: "8px",
           boxShadow: "0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3)",
           display: "flex",
           flexDirection: "column",
-          border: "3px solid #c41e3a",
+          border: "2px solid #c41e3a",
           position: "relative",
           overflow: "hidden",
         }}>
@@ -159,45 +159,45 @@ export default function App() {
             position: "absolute",
             top: -5,
             left: -5,
-            fontSize: 30,
+            fontSize: 20,
             opacity: 0.3,
           }}>🎄</div>
           <div style={{
             position: "absolute",
             bottom: -5,
             right: -5,
-            fontSize: 30,
+            fontSize: 20,
             opacity: 0.3,
           }}>⛄</div>
 
           <h2 style={{ 
-            margin: "0 0 10px 0", 
+            margin: "0 0 6px 0", 
             color: "#0f3d1a", 
-            fontSize: 18,
+            fontSize: 14,
             fontWeight: "bold",
             textAlign: "center",
           }}>🎄 Motor Magic 🎁</h2>
 
-          <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
+          <div style={{ flex: 1, overflowY: "auto", paddingRight: 3 }}>
             {angles.map((a, i) => (
               <div key={i} style={{ 
-                marginBottom: 10,
-                padding: "10px",
+                marginBottom: 6,
+                padding: "6px",
                 background: "linear-gradient(135deg, #f0fdf4 0%, #fef2f2 100%)",
-                borderRadius: "10px",
-                border: "2px solid #c41e3a",
+                borderRadius: "8px",
+                border: "1.5px solid #c41e3a",
                 boxShadow: "0 2px 8px rgba(196, 30, 58, 0.1)",
               }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, alignItems: "center" }}>
-                  <strong style={{ color: "#0f3d1a", fontSize: 13 }}>
-                    {i === 0 ? "🎅" : i === 1 ? "❄️" : i === 2 ? "🎄" : i === 3 ? "⛄" : "🎁"} Motor {i + 1}
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3, alignItems: "center" }}>
+                  <strong style={{ color: "#0f3d1a", fontSize: 11 }}>
+                    {i === 0 ? "🎅" : i === 1 ? "❄️" : i === 2 ? "🎄" : i === 3 ? "⛄" : "🎁"} M{i + 1}
                   </strong>
                   <span style={{ 
                     background: "linear-gradient(135deg, #c41e3a 0%, #8b1428 100%)",
                     color: "white",
-                    padding: "4px 12px",
-                    borderRadius: 20,
-                    fontSize: 12,
+                    padding: "2px 8px",
+                    borderRadius: 15,
+                    fontSize: 10,
                     fontWeight: "bold",
                     boxShadow: "0 2px 6px rgba(196, 30, 58, 0.3)",
                   }}>{a}°</span>
@@ -209,8 +209,8 @@ export default function App() {
                   value={a}
                   style={{ 
                     width: "100%",
-                    height: 6,
-                    borderRadius: 4,
+                    height: 4,
+                    borderRadius: 3,
                     outline: "none",
                     background: `linear-gradient(to right, #c41e3a 0%, #c41e3a ${(a/180)*100}%, #e0e0e0 ${(a/180)*100}%, #e0e0e0 100%)`,
                     cursor: "pointer",
@@ -224,22 +224,22 @@ export default function App() {
           </div>
 
           <button onClick={connectServo} style={{
-            padding: "10px 16px",
-            border: "2px solid #0f3d1a",
-            borderRadius: "10px",
-            fontSize: 13,
+            padding: "6px 12px",
+            border: "1.5px solid #0f3d1a",
+            borderRadius: "8px",
+            fontSize: 11,
             fontWeight: "bold",
             cursor: "pointer",
             color: "white",
             background: "linear-gradient(135deg, #0f3d1a 0%, #1a3d2a 100%)",
             boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)",
             transition: "all 0.3s ease",
-            marginTop: 8,
+            marginTop: 4,
           }}
           onMouseDown={(e) => e.target.style.transform = "scale(0.98)"}
           onMouseUp={(e) => e.target.style.transform = "scale(1)"}
           >
-            🔌 Connect Servos 🔌
+            🔌 Servos 🔌
           </button>
         </div>
 
@@ -247,14 +247,14 @@ export default function App() {
         <div style={{ 
           width: "48%",
           background: "rgba(255, 255, 255, 0.96)",
-          borderRadius: 16,
-          padding: "12px",
+          borderRadius: 12,
+          padding: "8px",
           boxShadow: "0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "space-between",
-          border: "3px solid #0f3d1a",
+          border: "2px solid #0f3d1a",
           position: "relative",
           overflow: "hidden",
         }}>
@@ -263,21 +263,21 @@ export default function App() {
             position: "absolute",
             top: -5,
             right: -5,
-            fontSize: 30,
+            fontSize: 20,
             opacity: 0.3,
           }}>🎁</div>
           <div style={{
             position: "absolute",
             bottom: -5,
             left: -5,
-            fontSize: 30,
+            fontSize: 20,
             opacity: 0.3,
           }}>🔔</div>
 
           <h2 style={{ 
-            margin: "0 0 8px 0", 
+            margin: "0 0 4px 0", 
             color: "#c41e3a", 
-            fontSize: 18,
+            fontSize: 14,
             fontWeight: "bold",
             textAlign: "center",
           }}>🎮 Merry Control 🎅</h2>
@@ -286,7 +286,7 @@ export default function App() {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 6,
+            gap: 4,
             flex: 1,
             justifyContent: "center",
           }}>
@@ -294,9 +294,9 @@ export default function App() {
             <button
               onClick={() => sendDirection(1)}
               style={{
-                width: 70,
-                height: 70,
-                borderRadius: "12px",
+                width: 56,
+                height: 56,
+                borderRadius: "10px",
                 border: "none",
                 cursor: "pointer",
                 background: "linear-gradient(135deg, #0f3d1a 0%, #1a5d2a 100%)",
@@ -306,7 +306,7 @@ export default function App() {
                 alignItems: "center",
                 justifyContent: "center",
                 color: "white",
-                fontSize: 28,
+                fontSize: 22,
                 fontWeight: "bold",
               }}
               onMouseDown={(e) => e.target.style.transform = "scale(0.95)"}
@@ -318,14 +318,14 @@ export default function App() {
             </button>
 
             {/* CENTER ROW */}
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
               {/* LEFT */}
               <button 
                 onClick={() => sendDirection(2)} 
                 style={{
-                  width: 70,
-                  height: 70,
-                  borderRadius: "12px",
+                  width: 56,
+                  height: 56,
+                  borderRadius: "10px",
                   border: "none",
                   cursor: "pointer",
                   background: "linear-gradient(135deg, #0f3d1a 0%, #1a5d2a 100%)",
@@ -334,7 +334,7 @@ export default function App() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 28,
+                  fontSize: 22,
                   fontWeight: "bold",
                 }}
                 onMouseDown={(e) => e.target.style.transform = "scale(0.95)"}
@@ -349,10 +349,10 @@ export default function App() {
               <button 
                 onClick={() => sendDirection(0)} 
                 style={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: "16px",
-                  border: "3px solid white",
+                  width: 64,
+                  height: 64,
+                  borderRadius: "12px",
+                  border: "2px solid white",
                   cursor: "pointer",
                   background: "linear-gradient(135deg, #c41e3a 0%, #8b1428 100%)",
                   boxShadow: "0 6px 20px rgba(196, 30, 58, 0.4)",
@@ -361,7 +361,7 @@ export default function App() {
                   alignItems: "center",
                   justifyContent: "center",
                   fontWeight: "bold",
-                  fontSize: 32,
+                  fontSize: 26,
                 }}
                 onMouseDown={(e) => e.target.style.transform = "scale(0.93)"}
                 onMouseUp={(e) => e.target.style.transform = "scale(1)"}
@@ -375,9 +375,9 @@ export default function App() {
               <button 
                 onClick={() => sendDirection(3)} 
                 style={{
-                  width: 70,
-                  height: 70,
-                  borderRadius: "12px",
+                  width: 56,
+                  height: 56,
+                  borderRadius: "10px",
                   border: "none",
                   cursor: "pointer",
                   background: "linear-gradient(135deg, #0f3d1a 0%, #1a5d2a 100%)",
@@ -386,7 +386,7 @@ export default function App() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 28,
+                  fontSize: 22,
                   fontWeight: "bold",
                 }}
                 onMouseDown={(e) => e.target.style.transform = "scale(0.95)"}
@@ -402,9 +402,9 @@ export default function App() {
             <button
               onClick={() => sendDirection(4)}
               style={{
-                width: 70,
-                height: 70,
-                borderRadius: "12px",
+                width: 56,
+                height: 56,
+                borderRadius: "10px",
                 border: "none",
                 cursor: "pointer",
                 background: "linear-gradient(135deg, #0f3d1a 0%, #1a5d2a 100%)",
@@ -414,7 +414,7 @@ export default function App() {
                 alignItems: "center",
                 justifyContent: "center",
                 color: "white",
-                fontSize: 28,
+                fontSize: 22,
                 fontWeight: "bold",
               }}
               onMouseDown={(e) => e.target.style.transform = "scale(0.95)"}
@@ -427,10 +427,10 @@ export default function App() {
           </div>
 
           <button onClick={connectDirection} style={{
-            padding: "10px 16px",
-            border: "2px solid #c41e3a",
-            borderRadius: "10px",
-            fontSize: 13,
+            padding: "6px 12px",
+            border: "1.5px solid #c41e3a",
+            borderRadius: "8px",
+            fontSize: 11,
             fontWeight: "bold",
             cursor: "pointer",
             color: "white",
@@ -442,7 +442,7 @@ export default function App() {
           onMouseDown={(e) => e.target.style.transform = "scale(0.98)"}
           onMouseUp={(e) => e.target.style.transform = "scale(1)"}
           >
-            🔌 Connect Direction 🔌
+            🔌 Direction 🔌
           </button>
         </div>
       </div>
@@ -450,11 +450,11 @@ export default function App() {
       {/* FESTIVE FOOTER */}
       <div style={{
         background: "linear-gradient(90deg, #0f3d1a 0%, #ffd700 50%, #0f3d1a 100%)",
-        padding: "6px 16px",
+        padding: "3px 8px",
         textAlign: "center",
-        borderTop: "3px solid #c41e3a",
+        borderTop: "2px solid #c41e3a",
       }}>
-        <div style={{ fontSize: 12, fontWeight: "bold", color: "white", letterSpacing: 1 }}>
+        <div style={{ fontSize: 10, fontWeight: "bold", color: "white", letterSpacing: 0.5 }}>
           🔔 Happy Holidays! 🎁 Merry Christmas 2025 🎄 Ho Ho Ho! 🔔
         </div>
       </div>
