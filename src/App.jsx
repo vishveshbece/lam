@@ -32,7 +32,9 @@ function useBleState() {
 
   const connectArm = async () => {
     try {
-      const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [ARM_SERVICE] }] });
+      const device = await navigator.bluetooth.requestDevice({ 
+        filters: [{ services: [ARM_SERVICE] }] 
+      });
       const server = await device.gatt.connect();
       const svc = await server.getPrimaryService(ARM_SERVICE);
       const char = await svc.getCharacteristic(ARM_ANGLES_CHAR);
@@ -46,7 +48,9 @@ function useBleState() {
 
   const connectBase = async () => {
     try {
-      const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [BASE_SERVICE] }] });
+      const device = await navigator.bluetooth.requestDevice({ 
+        filters: [{ services: [BASE_SERVICE] }] 
+      });
       const server = await device.gatt.connect();
       const svc = await server.getPrimaryService(BASE_SERVICE);
       const char = await svc.getCharacteristic(BASE_CHAR);
@@ -181,7 +185,9 @@ function ArmPage({ ble }) {
   };
 
   // Sync on mount
-  useEffect(() => { if (ble.armCharAngles) sendArmAngles(angles); }, [ble.armCharAngles]);
+  useEffect(() => { 
+    if (ble.armCharAngles) sendArmAngles(angles); 
+  }, [ble.armCharAngles]);
 
   return (
     <div className="page-container fade-in">
@@ -235,48 +241,52 @@ function BasePage({ ble }) {
   const joystickRef = useRef(null);
   const pointerIdRef = useRef(null);
   const [joystick, setJoystick] = useState({ x: 0, y: 0 });
-  const [containerSize, setContainerSize] = useState(0);
-
-  // Resize observer to handle responsive joystick sizing
-  useEffect(() => {
-    const updateSize = () => {
-      if (joystickRef.current) {
-        // We use the actual rendered width for calculation
-        setContainerSize(joystickRef.current.offsetWidth / 2);
-      }
-    };
-    
-    // Initial size
-    updateSize();
-    
-    // Debounce resize listener
-    let timeoutId = null;
-    const resizeListener = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(updateSize, 100);
-    };
-
-    window.addEventListener('resize', resizeListener);
-    // Slight delay to ensure DOM is ready
-    setTimeout(updateSize, 100);
-
-    return () => window.removeEventListener('resize', resizeListener);
-  }, []);
+  
+  // Command throttling
+  const lastSentCmdRef = useRef(null);
+  const lastSendTimeRef = useRef(0);
 
   const sendCmd = async (cmd) => {
+    // Don't send the same command repeatedly
+    if (lastSentCmdRef.current === cmd) return;
+    
+    // Throttle sending frequency
+    const now = Date.now();
+    if (now - lastSendTimeRef.current < 50) return;
+    
     if (!ble.baseChar) return;
+    
     try {
       await ble.baseChar.writeValue(new Uint8Array([cmd]));
-    } catch (e) { console.error(e); }
+      lastSentCmdRef.current = cmd;
+      lastSendTimeRef.current = now;
+    } catch (e) { 
+      console.error("Send command error:", e);
+      lastSentCmdRef.current = null;
+    }
   };
 
   const determineCmdFromVector = (nx, ny) => {
-    const t = 0.4;
-    if (Math.abs(nx) < t && Math.abs(ny) < t) return 0; 
-    if (Math.abs(nx) > Math.abs(ny)) {
-      return nx > 0 ? 4 : 3; 
+    const deadzone = 0.2;
+    
+    // Apply deadzone
+    if (Math.abs(nx) < deadzone && Math.abs(ny) < deadzone) return 0;
+    
+    // Normalize after deadzone
+    let effectiveNx = nx;
+    let effectiveNy = ny;
+    if (Math.abs(nx) > deadzone) {
+      effectiveNx = (Math.abs(nx) - deadzone) / (1 - deadzone) * Math.sign(nx);
+    }
+    if (Math.abs(ny) > deadzone) {
+      effectiveNy = (Math.abs(ny) - deadzone) / (1 - deadzone) * Math.sign(ny);
+    }
+
+    // Determine primary direction
+    if (Math.abs(effectiveNy) > Math.abs(effectiveNx)) {
+      return effectiveNy > 0 ? 1 : 2; // Forward/Backward
     } else {
-      return ny > 0 ? 1 : 2; 
+      return effectiveNx > 0 ? 4 : 3; // Right/Left
     }
   };
 
@@ -292,7 +302,6 @@ function BasePage({ ble }) {
     
     let clientX, clientY;
     
-    // Handle both mouse and touch events
     if (ev.touches) {
       clientX = ev.touches[0].clientX;
       clientY = ev.touches[0].clientY;
@@ -302,7 +311,7 @@ function BasePage({ ble }) {
     }
     
     let dx = clientX - cx;
-    let dy = cy - clientY; 
+    let dy = cy - clientY;
     let nx = dx / maxR;
     let ny = dy / maxR;
     
@@ -314,7 +323,6 @@ function BasePage({ ble }) {
   };
 
   const startDrag = (ev) => {
-    // Prevent default to stop scrolling on mobile
     if (ev.cancelable) ev.preventDefault();
     
     pointerIdRef.current = ev.pointerId ?? 1;
@@ -332,10 +340,6 @@ function BasePage({ ble }) {
     sendCmd(0);
   };
 
-  // Dynamic style for the handle
-  // Base size of joystick is responsive, so handle translation must match
-  const joystickRadius = containerSize || 120; // fallback to 120 (half of 240)
-  
   return (
     <div className="page-container fade-in">
       <div className="header-row">
@@ -352,7 +356,6 @@ function BasePage({ ble }) {
             onPointerMove={handleMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
-            // Add Touch events explicitly for wider support
             onTouchStart={startDrag}
             onTouchMove={handleMove}
             onTouchEnd={endDrag}
@@ -362,7 +365,6 @@ function BasePage({ ble }) {
             <div 
               className="joystick-handle"
               style={{ 
-                // We use percentage for translation to be fully responsive without JS recalc dependency
                 transform: `translate(${joystick.x * 50}%, ${-joystick.y * 50}%)` 
               }}
             >
@@ -375,8 +377,16 @@ function BasePage({ ble }) {
         <div className="control-panel-bottom">
            <h3>Rotation</h3>
            <div className="rotate-group">
-             <button className="btn-circle" onPointerDown={() => sendCmd(6)} onPointerUp={() => sendCmd(0)}>↺</button>
-             <button className="btn-circle" onPointerDown={() => sendCmd(5)} onPointerUp={() => sendCmd(0)}>↻</button>
+             <button 
+               className="btn-circle" 
+               onPointerDown={() => sendCmd(6)} 
+               onPointerUp={() => sendCmd(0)}
+             >↺</button>
+             <button 
+               className="btn-circle" 
+               onPointerDown={() => sendCmd(5)} 
+               onPointerUp={() => sendCmd(0)}
+             >↻</button>
            </div>
            <div className="instruction">Hold to rotate</div>
         </div>
@@ -417,7 +427,6 @@ function Layout({ ble, children }) {
         {children}
       </main>
       
-      {/* GLOBAL STYLES INJECTED HERE */}
       <style>{`
         :root {
           --bg: #0f172a;
@@ -444,7 +453,6 @@ function Layout({ ble, children }) {
           -webkit-tap-highlight-color: transparent;
         }
 
-        /* Layout */
         .app-shell { display: flex; flex-direction: column; min-height: 100vh; background-image: radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 70%); }
         
         .app-header {
@@ -458,7 +466,6 @@ function Layout({ ble, children }) {
         
         .main-content { flex: 1; padding: 20px; max-width: 1000px; margin: 0 auto; width: 100%; position: relative; }
         
-        /* Typography */
         h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
         .glitch-text { font-size: 2.5rem; font-weight: 800; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; color: transparent; }
         .subtitle { color: var(--text-dim); margin-top: 8px; font-size: 1.1rem; }
@@ -466,7 +473,6 @@ function Layout({ ble, children }) {
         .text-success { color: var(--success); text-shadow: 0 0 10px rgba(16,185,129,0.4); }
         .text-dim { color: var(--text-dim); }
 
-        /* Navigation */
         .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.2rem; }
         .nav-links { display: flex; gap: 10px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 20px; }
         .nav-links a {
@@ -477,13 +483,11 @@ function Layout({ ble, children }) {
         
         .connection-status { display: flex; gap: 8px; }
 
-        /* Status Badges */
         .status-badge { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; background: var(--surface); padding: 6px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
         .status-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); transition: 0.3s; }
         .status-badge.active { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1); }
         .status-badge.active .dot { background: var(--success); box-shadow: 0 0 8px var(--success); }
 
-        /* Cards */
         .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 40px; }
         .tech-card {
           background: var(--surface); border-radius: 16px; padding: 24px;
@@ -497,7 +501,6 @@ function Layout({ ble, children }) {
         .card-body p { color: var(--text-dim); font-size: 0.9rem; line-height: 1.5; margin-bottom: 20px; }
         .status-indicator { font-size: 0.85rem; font-weight: 600; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; display: inline-block; }
 
-        /* Buttons */
         .btn { border: none; padding: 14px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; font-size: 1rem; }
         .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
         .btn-primary:active { transform: translateY(1px); }
@@ -505,7 +508,6 @@ function Layout({ ble, children }) {
         .btn-circle { width: 70px; height: 70px; border-radius: 50%; border: none; background: var(--surface-light); color: #fff; font-size: 1.8rem; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.2); -webkit-user-select: none; user-select: none; }
         .btn-circle:active { transform: scale(0.95); background: var(--primary); }
 
-        /* Sliders (Arm) */
         .sliders-container { margin-top: 30px; display: grid; gap: 16px; }
         .slider-card { background: var(--surface); padding: 16px 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
         .slider-info { display: flex; justify-content: space-between; margin-bottom: 12px; font-weight: 600; font-size: 0.9rem; }
@@ -520,7 +522,6 @@ function Layout({ ble, children }) {
         }
         .slider-meta { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-dim); margin-top: 8px; }
 
-        /* Joystick (Base) */
         .base-layout { display: flex; flex-direction: column; gap: 40px; align-items: center; margin-top: 20px; }
         .control-panel-bottom { text-align: center; order: 2; }
         .control-panel-bottom h3 { margin-bottom: 15px; color: var(--text-dim); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
@@ -539,20 +540,18 @@ function Layout({ ble, children }) {
         .crosshair-v { position: absolute; left: 50%; top: 20px; bottom: 20px; width: 1px; background: rgba(255,255,255,0.1); }
         .crosshair-h { position: absolute; top: 50%; left: 20px; right: 20px; height: 1px; background: rgba(255,255,255,0.1); }
         .joystick-handle {
-          width: 25%; height: 25%; /* Responsive handle size */
+          width: 25%; height: 25%;
           border-radius: 50%;
           background: linear-gradient(145deg, #475569, #334155);
-          position: absolute; top: 37.5%; left: 37.5%; /* Center based on size */
+          position: absolute; top: 37.5%; left: 37.5%;
           border: 2px solid rgba(255,255,255,0.1);
           box-shadow: 0 4px 10px rgba(0,0,0,0.4);
           display: flex; align-items: center; justify-content: center;
-          /* pointer-events: none; Remove this if handle catches events, but container usually handles it */
         }
         .handle-glow { width: 30%; height: 30%; border-radius: 50%; background: var(--danger); box-shadow: 0 0 10px var(--danger); transition: 0.3s; }
         .joystick-base.active .handle-glow { background: var(--primary); box-shadow: 0 0 15px var(--primary); }
         .instruction { font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 10px; }
 
-        /* Utility */
         .fade-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .overlay-warning {
@@ -563,23 +562,21 @@ function Layout({ ble, children }) {
         .badge-error { background: var(--danger); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; margin-left: 10px; }
         .header-row { display: flex; align-items: center; margin-bottom: 20px; }
 
-        /* ---------- RESPONSIVE MEDIA QUERIES ---------- */
         @media (max-width: 768px) {
           .app-header { padding: 0 16px; height: 60px; }
-          .brand-text { display: none; } /* Hide text, keep icon */
+          .brand-text { display: none; }
           .brand-icon { font-size: 1.5rem; }
           
           .nav-links { gap: 4px; }
           .nav-links a { font-size: 0.8rem; padding: 6px 12px; }
           
-          .status-badge .badge-label { display: none; } /* Hide label on mobile */
+          .status-badge .badge-label { display: none; }
           .status-badge { padding: 6px; border-radius: 50%; }
           .status-badge .dot { width: 10px; height: 10px; }
           
           .glitch-text { font-size: 1.8rem; }
           .card-grid { grid-template-columns: 1fr; margin-top: 20px; }
           
-          /* Joystick resizing for mobile */
           .joystick-base { width: 70vw; height: 70vw; max-width: 300px; max-height: 300px; }
           
           .btn-circle { width: 60px; height: 60px; font-size: 1.5rem; }
