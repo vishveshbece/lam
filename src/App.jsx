@@ -18,6 +18,17 @@ const ARM_LIMITS = [
 ];
 const DEFAULT_ARM_ANGLES = [90, 120, 45, 90, 90];
 
+/* ---------- COMMAND MAPPING (Matches Arduino) ---------- */
+const BASE_COMMANDS = {
+  STOP: 0,
+  FORWARD: 1,
+  BACKWARD: 2,
+  LEFT: 3,
+  RIGHT: 4,
+  ROTATE_LEFT: 5,
+  ROTATE_RIGHT: 6
+};
+
 /* ---------- ICONS (SVG) ---------- */
 const Icons = {
   Arm: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="13" x2="7" y2="18"/><line x1="12" y1="13" x2="17" y2="18"/></svg>,
@@ -33,16 +44,28 @@ const Icons = {
 function useBleState() {
   const [armCharAngles, setArmCharAngles] = useState(null);
   const [baseChar, setBaseChar] = useState(null);
+  const [connectedDevice, setConnectedDevice] = useState({ arm: null, base: null });
 
   const connectArm = async () => {
     try {
       const device = await navigator.bluetooth.requestDevice({ 
-        filters: [{ services: [ARM_SERVICE] }] 
+        filters: [{ name: "OmniBot_2.5A" }],
+        optionalServices: [ARM_SERVICE, BASE_SERVICE]
       });
+      
       const server = await device.gatt.connect();
       const svc = await server.getPrimaryService(ARM_SERVICE);
       const char = await svc.getCharacteristic(ARM_ANGLES_CHAR);
+      
       setArmCharAngles(char);
+      setConnectedDevice(prev => ({ ...prev, arm: device }));
+      
+      // Handle disconnection
+      device.addEventListener('gattserverdisconnected', () => {
+        setArmCharAngles(null);
+        setConnectedDevice(prev => ({ ...prev, arm: null }));
+      });
+      
       return char;
     } catch (e) {
       console.error("connectArm:", e);
@@ -53,12 +76,23 @@ function useBleState() {
   const connectBase = async () => {
     try {
       const device = await navigator.bluetooth.requestDevice({ 
-        filters: [{ services: [BASE_SERVICE] }] 
+        filters: [{ name: "OmniBot_2.5A" }],
+        optionalServices: [BASE_SERVICE, ARM_SERVICE]
       });
+      
       const server = await device.gatt.connect();
       const svc = await server.getPrimaryService(BASE_SERVICE);
       const char = await svc.getCharacteristic(BASE_CHAR);
+      
       setBaseChar(char);
+      setConnectedDevice(prev => ({ ...prev, base: device }));
+      
+      // Handle disconnection
+      device.addEventListener('gattserverdisconnected', () => {
+        setBaseChar(null);
+        setConnectedDevice(prev => ({ ...prev, base: null }));
+      });
+      
       return char;
     } catch (e) {
       console.error("connectBase:", e);
@@ -66,7 +100,15 @@ function useBleState() {
     }
   };
 
-  return { armCharAngles, baseChar, connectArm, connectBase };
+  const disconnectAll = () => {
+    if (connectedDevice.arm) connectedDevice.arm.gatt.disconnect();
+    if (connectedDevice.base) connectedDevice.base.gatt.disconnect();
+    setArmCharAngles(null);
+    setBaseChar(null);
+    setConnectedDevice({ arm: null, base: null });
+  };
+
+  return { armCharAngles, baseChar, connectArm, connectBase, disconnectAll, connectedDevice };
 }
 
 /* ---------- COMPONENTS ---------- */
@@ -81,12 +123,12 @@ function StatusBadge({ connected, label }) {
 }
 
 function ConnectionPage({ ble }) {
-  const navigate = useNavigate();
+  const navigate = useLocation();
   
   const handleConnect = async (type) => {
     try {
-      if(type === 'arm') await ble.connectArm();
-      if(type === 'base') await ble.connectBase();
+      if (type === 'arm') await ble.connectArm();
+      if (type === 'base') await ble.connectBase();
     } catch (e) {
       alert(`${type.toUpperCase()} connection failed or cancelled`);
     }
@@ -274,7 +316,7 @@ function BasePage({ ble }) {
 
   const handleButtonRelease = () => {
     setActiveButton(null);
-    sendCmd(0); // Stop command
+    sendCmd(BASE_COMMANDS.STOP);
   };
 
   // Add keyboard controls
@@ -285,35 +327,39 @@ function BasePage({ ble }) {
         case 'w':
         case 'W':
           e.preventDefault();
-          handleButtonPress(1, 'forward');
+          handleButtonPress(BASE_COMMANDS.FORWARD, 'forward');
           break;
         case 'ArrowDown':
         case 's':
         case 'S':
           e.preventDefault();
-          handleButtonPress(2, 'backward');
+          handleButtonPress(BASE_COMMANDS.BACKWARD, 'backward');
           break;
         case 'ArrowLeft':
         case 'a':
         case 'A':
           e.preventDefault();
-          handleButtonPress(3, 'left');
+          handleButtonPress(BASE_COMMANDS.LEFT, 'left');
           break;
         case 'ArrowRight':
         case 'd':
         case 'D':
           e.preventDefault();
-          handleButtonPress(4, 'right');
+          handleButtonPress(BASE_COMMANDS.RIGHT, 'right');
           break;
         case 'q':
         case 'Q':
           e.preventDefault();
-          handleButtonPress(5, 'rotateLeft');
+          handleButtonPress(BASE_COMMANDS.ROTATE_LEFT, 'rotateLeft');
           break;
         case 'e':
         case 'E':
           e.preventDefault();
-          handleButtonPress(6, 'rotateRight');
+          handleButtonPress(BASE_COMMANDS.ROTATE_RIGHT, 'rotateRight');
+          break;
+        case ' ':
+          e.preventDefault();
+          handleButtonRelease();
           break;
       }
     };
@@ -349,7 +395,7 @@ function BasePage({ ble }) {
             <div className="dpad-row">
               <button 
                 className={`control-btn direction-btn up-btn ${activeButton === 'forward' ? 'active' : ''}`}
-                onPointerDown={() => handleButtonPress(1, 'forward')}
+                onPointerDown={() => handleButtonPress(BASE_COMMANDS.FORWARD, 'forward')}
                 onPointerUp={handleButtonRelease}
                 onPointerLeave={handleButtonRelease}
               >
@@ -359,7 +405,7 @@ function BasePage({ ble }) {
             <div className="dpad-row">
               <button 
                 className={`control-btn direction-btn left-btn ${activeButton === 'left' ? 'active' : ''}`}
-                onPointerDown={() => handleButtonPress(3, 'left')}
+                onPointerDown={() => handleButtonPress(BASE_COMMANDS.LEFT, 'left')}
                 onPointerUp={handleButtonRelease}
                 onPointerLeave={handleButtonRelease}
               >
@@ -368,7 +414,7 @@ function BasePage({ ble }) {
               <div className="center-spacer"></div>
               <button 
                 className={`control-btn direction-btn right-btn ${activeButton === 'right' ? 'active' : ''}`}
-                onPointerDown={() => handleButtonPress(4, 'right')}
+                onPointerDown={() => handleButtonPress(BASE_COMMANDS.RIGHT, 'right')}
                 onPointerUp={handleButtonRelease}
                 onPointerLeave={handleButtonRelease}
               >
@@ -378,7 +424,7 @@ function BasePage({ ble }) {
             <div className="dpad-row">
               <button 
                 className={`control-btn direction-btn down-btn ${activeButton === 'backward' ? 'active' : ''}`}
-                onPointerDown={() => handleButtonPress(2, 'backward')}
+                onPointerDown={() => handleButtonPress(BASE_COMMANDS.BACKWARD, 'backward')}
                 onPointerUp={handleButtonRelease}
                 onPointerLeave={handleButtonRelease}
               >
@@ -395,7 +441,7 @@ function BasePage({ ble }) {
           <div className="rotate-group">
             <button 
               className={`control-btn rotate-btn ${activeButton === 'rotateLeft' ? 'active' : ''}`}
-              onPointerDown={() => handleButtonPress(5, 'rotateLeft')}
+              onPointerDown={() => handleButtonPress(BASE_COMMANDS.ROTATE_LEFT, 'rotateLeft')}
               onPointerUp={handleButtonRelease}
               onPointerLeave={handleButtonRelease}
             >
@@ -403,7 +449,7 @@ function BasePage({ ble }) {
             </button>
             <button 
               className={`control-btn rotate-btn ${activeButton === 'rotateRight' ? 'active' : ''}`}
-              onPointerDown={() => handleButtonPress(6, 'rotateRight')}
+              onPointerDown={() => handleButtonPress(BASE_COMMANDS.ROTATE_RIGHT, 'rotateRight')}
               onPointerUp={handleButtonRelease}
               onPointerLeave={handleButtonRelease}
             >
@@ -420,7 +466,7 @@ function BasePage({ ble }) {
             className="control-btn stop-btn"
             onClick={() => {
               setActiveButton(null);
-              sendCmd(0);
+              sendCmd(BASE_COMMANDS.STOP);
             }}
           >
             STOP
@@ -490,9 +536,20 @@ function Layout({ ble, children }) {
           <Link to="/arm" className={location.pathname === '/arm' ? 'active' : ''}>ARM</Link>
           <Link to="/base" className={location.pathname === '/base' ? 'active' : ''}>BASE</Link>
         </nav>
-        <div className="connection-status">
-          <StatusBadge connected={ble.armCharAngles} label="ARM" />
-          <StatusBadge connected={ble.baseChar} label="BASE" />
+        <div className="header-actions">
+          <div className="connection-status">
+            <StatusBadge connected={ble.armCharAngles} label="ARM" />
+            <StatusBadge connected={ble.baseChar} label="BASE" />
+          </div>
+          {(ble.armCharAngles || ble.baseChar) && (
+            <button 
+              className="btn btn-secondary disconnect-btn"
+              onClick={ble.disconnectAll}
+              style={{ marginLeft: '10px', padding: '6px 12px', fontSize: '0.8rem' }}
+            >
+              Disconnect All
+            </button>
+          )}
         </div>
       </header>
       <main className="main-content">
@@ -534,6 +591,17 @@ function Layout({ ble, children }) {
           backdrop-filter: blur(10px);
           border-bottom: 1px solid rgba(255,255,255,0.05);
           position: sticky; top: 0; z-index: 50;
+        }
+        
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        
+        .disconnect-btn {
+          background: var(--danger);
+          color: white;
         }
         
         .main-content { flex: 1; padding: 20px; max-width: 1000px; margin: 0 auto; width: 100%; position: relative; }
@@ -814,6 +882,14 @@ function Layout({ ble, children }) {
           }
           
           .tech-card { padding: 20px; }
+          .header-actions {
+            flex-direction: column;
+            gap: 5px;
+          }
+          .disconnect-btn {
+            font-size: 0.7rem;
+            padding: 4px 8px;
+          }
         }
         
         @media (max-width: 380px) {
