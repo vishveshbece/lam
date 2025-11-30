@@ -5,7 +5,7 @@ import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from "re
 const BASE_SERVICE = "0000aaaa-0000-1000-8000-00805f9b34fb";
 const BASE_CHAR    = "0000aaab-0000-1000-8000-00805f9b34fb";
 
-// Arm UUIDs (If you add the arm code later)
+// Arm UUIDs
 const ARM_SERVICE     = "0000bbbb-0000-1000-8000-00805f9b34fb";
 const ARM_ANGLES_CHAR = "0000bbbc-0000-1000-8000-00805f9b34fb";
 
@@ -47,7 +47,6 @@ function useBleState() {
   const [baseChar, setBaseChar] = useState(null);
   const [connectedDevice, setConnectedDevice] = useState({ arm: null, base: null });
 
-  // Helper to get error message
   const handleError = (e) => {
     console.error(e);
     alert("Connection Error: " + e.message);
@@ -57,7 +56,6 @@ function useBleState() {
     try {
       console.log("Requesting Arm Device...");
       const device = await navigator.bluetooth.requestDevice({ 
-        // FIX: Accept all devices to ensure we see the ESP32
         acceptAllDevices: true,
         optionalServices: [ARM_SERVICE, BASE_SERVICE]
       });
@@ -84,7 +82,6 @@ function useBleState() {
     try {
       console.log("Requesting Base Device...");
       const device = await navigator.bluetooth.requestDevice({ 
-        // FIX: Accept all devices to ensure we see the ESP32
         acceptAllDevices: true,
         optionalServices: [BASE_SERVICE, ARM_SERVICE]
       });
@@ -108,12 +105,8 @@ function useBleState() {
   };
 
   const disconnectAll = () => {
-    if (connectedDevice.arm) {
-      if (connectedDevice.arm.gatt.connected) connectedDevice.arm.gatt.disconnect();
-    }
-    if (connectedDevice.base) {
-       if (connectedDevice.base.gatt.connected) connectedDevice.base.gatt.disconnect();
-    }
+    if (connectedDevice.arm?.gatt?.connected) connectedDevice.arm.gatt.disconnect();
+    if (connectedDevice.base?.gatt?.connected) connectedDevice.base.gatt.disconnect();
     setArmCharAngles(null);
     setBaseChar(null);
     setConnectedDevice({ arm: null, base: null });
@@ -134,7 +127,7 @@ function StatusBadge({ connected, label }) {
 }
 
 function ConnectionPage({ ble }) {
-  const navigate = useNavigate(); // FIX: used useNavigate instead of useLocation for navigation
+  const navigate = useNavigate();
   
   const handleConnect = async (type) => {
     if (type === 'arm') await ble.connectArm();
@@ -149,7 +142,6 @@ function ConnectionPage({ ble }) {
       </div>
 
       <div className="card-grid">
-        {/* Arm Card */}
         <div className={`tech-card ${ble.armCharAngles ? 'connected' : ''}`}>
           <div className="card-header">
             <Icons.Arm />
@@ -176,7 +168,6 @@ function ConnectionPage({ ble }) {
           </div>
         </div>
 
-        {/* Base Card */}
         <div className={`tech-card ${ble.baseChar ? 'connected' : ''}`}>
           <div className="card-header">
             <Icons.Base />
@@ -237,7 +228,6 @@ function ArmPage({ ble }) {
     sendArmAngles(next);
   };
 
-  // Sync on mount
   useEffect(() => { 
     if (ble.armCharAngles) sendArmAngles(angles); 
   }, [ble.armCharAngles]);
@@ -253,7 +243,6 @@ function ArmPage({ ble }) {
         {angles.map((a, i) => {
           const { min, max, label } = ARM_LIMITS[i];
           const percent = ((a - min) / (max - min)) * 100;
-          
           return (
             <div key={i} className="slider-card">
               <div className="slider-info">
@@ -291,82 +280,93 @@ function ArmPage({ ble }) {
 }
 
 function BasePage({ ble }) {
-  // Command throttling
-  const lastSentCmdRef = useRef(null);
-  const lastSendTimeRef = useRef(0);
   const [activeButton, setActiveButton] = useState(null);
+  const [currentCmd, setCurrentCmd] = useState(null);
 
-  const sendCmd = async (cmd) => {
-    // Don't send the same command repeatedly
-    if (lastSentCmdRef.current === cmd) return;
+  // --- HEARTBEAT LOOP ---
+  // This sends the command repeatedly while the button is held.
+  // This is required because the ESP32 has a 1-second safety timeout.
+  useEffect(() => {
+    if (currentCmd === null) return;
+
+    const send = async () => {
+      if (!ble.baseChar) return;
+      try {
+        await ble.baseChar.writeValue(new Uint8Array([currentCmd]));
+      } catch (e) {
+        console.error("BLE Write Error:", e);
+      }
+    };
+
+    // Send immediately on press
+    send();
+
+    // Repeat every 100ms to keep robot alive and moving smooth
+    const timer = setInterval(send, 100);
+
+    return () => clearInterval(timer);
+  }, [currentCmd, ble.baseChar]);
+
+  const startCommand = (cmd, buttonName) => {
+    if (currentCmd === cmd) return; // Prevent duplicate triggers
+    setActiveButton(buttonName);
+    setCurrentCmd(cmd);
+  };
+
+  const stopCommand = () => {
+    setActiveButton(null);
+    setCurrentCmd(null);
     
-    // Throttle sending frequency (prevents flooding ESP32)
-    const now = Date.now();
-    if (now - lastSendTimeRef.current < 50) return;
-    
-    if (!ble.baseChar) return;
-    
-    try {
-      await ble.baseChar.writeValue(new Uint8Array([cmd]));
-      lastSentCmdRef.current = cmd;
-      lastSendTimeRef.current = now;
-    } catch (e) { 
-      console.error("Send command error:", e);
-      lastSentCmdRef.current = null;
+    // Send explicit STOP command once
+    if (ble.baseChar) {
+      ble.baseChar.writeValue(new Uint8Array([BASE_COMMANDS.STOP]))
+         .catch(e => console.error("Stop Error:", e));
     }
   };
 
-  const handleButtonPress = (cmd, buttonName) => {
-    setActiveButton(buttonName);
-    sendCmd(cmd);
-  };
-
-  const handleButtonRelease = () => {
-    setActiveButton(null);
-    sendCmd(BASE_COMMANDS.STOP);
-  };
-
-  // Add keyboard controls
+  // Keyboard Handlers
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Prevent default scrolling for arrows/space
-      if(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'a', 's', 'd', 'q', 'e'].includes(e.key.toLowerCase())) {
         e.preventDefault();
       }
+      
+      const key = e.key.toLowerCase();
 
-      switch(e.key) {
-        case 'ArrowUp':
-        case 'w': case 'W':
-          handleButtonPress(BASE_COMMANDS.FORWARD, 'forward');
+      switch(key) {
+        case 'arrowup':
+        case 'w':
+          startCommand(BASE_COMMANDS.FORWARD, 'forward');
           break;
-        case 'ArrowDown':
-        case 's': case 'S':
-          handleButtonPress(BASE_COMMANDS.BACKWARD, 'backward');
+        case 'arrowdown':
+        case 's':
+          startCommand(BASE_COMMANDS.BACKWARD, 'backward');
           break;
-        case 'ArrowLeft':
-        case 'a': case 'A':
-          handleButtonPress(BASE_COMMANDS.LEFT, 'left');
+        case 'arrowleft':
+        case 'a':
+          startCommand(BASE_COMMANDS.LEFT, 'left');
           break;
-        case 'ArrowRight':
-        case 'd': case 'D':
-          handleButtonPress(BASE_COMMANDS.RIGHT, 'right');
+        case 'arrowright':
+        case 'd':
+          startCommand(BASE_COMMANDS.RIGHT, 'right');
           break;
-        case 'q': case 'Q':
-          handleButtonPress(BASE_COMMANDS.ROTATE_LEFT, 'rotateLeft');
+        case 'q':
+          startCommand(BASE_COMMANDS.ROTATE_LEFT, 'rotateLeft');
           break;
-        case 'e': case 'E':
-          handleButtonPress(BASE_COMMANDS.ROTATE_RIGHT, 'rotateRight');
+        case 'e':
+          startCommand(BASE_COMMANDS.ROTATE_RIGHT, 'rotateRight');
           break;
         case ' ':
-          handleButtonRelease();
+          stopCommand();
           break;
+        default: break;
       }
     };
 
     const handleKeyUp = (e) => {
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'W', 's', 'S', 'a', 'A', 'd', 'D', 'q', 'Q', 'e', 'E', ' '].includes(e.key)) {
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 's', 'a', 'd', 'q', 'e', ' '].includes(e.key.toLowerCase())) {
         e.preventDefault();
-        handleButtonRelease();
+        stopCommand();
       }
     };
 
@@ -377,7 +377,7 @@ function BasePage({ ble }) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [currentCmd]); // Re-bind if command changes to ensure clean state
 
   return (
     <div className="page-container fade-in">
@@ -387,16 +387,15 @@ function BasePage({ ble }) {
       </div>
 
       <div className="button-controls-layout">
-        {/* Movement Controls */}
         <div className="control-section">
           <h3>Movement</h3>
           <div className="dpad-container">
             <div className="dpad-row">
               <button 
                 className={`control-btn direction-btn up-btn ${activeButton === 'forward' ? 'active' : ''}`}
-                onPointerDown={() => handleButtonPress(BASE_COMMANDS.FORWARD, 'forward')}
-                onPointerUp={handleButtonRelease}
-                onPointerLeave={handleButtonRelease}
+                onPointerDown={() => startCommand(BASE_COMMANDS.FORWARD, 'forward')}
+                onPointerUp={stopCommand}
+                onPointerLeave={stopCommand}
               >
                 <Icons.Up />
               </button>
@@ -404,18 +403,18 @@ function BasePage({ ble }) {
             <div className="dpad-row">
               <button 
                 className={`control-btn direction-btn left-btn ${activeButton === 'left' ? 'active' : ''}`}
-                onPointerDown={() => handleButtonPress(BASE_COMMANDS.LEFT, 'left')}
-                onPointerUp={handleButtonRelease}
-                onPointerLeave={handleButtonRelease}
+                onPointerDown={() => startCommand(BASE_COMMANDS.LEFT, 'left')}
+                onPointerUp={stopCommand}
+                onPointerLeave={stopCommand}
               >
                 <Icons.Left />
               </button>
               <div className="center-spacer"></div>
               <button 
                 className={`control-btn direction-btn right-btn ${activeButton === 'right' ? 'active' : ''}`}
-                onPointerDown={() => handleButtonPress(BASE_COMMANDS.RIGHT, 'right')}
-                onPointerUp={handleButtonRelease}
-                onPointerLeave={handleButtonRelease}
+                onPointerDown={() => startCommand(BASE_COMMANDS.RIGHT, 'right')}
+                onPointerUp={stopCommand}
+                onPointerLeave={stopCommand}
               >
                 <Icons.Right />
               </button>
@@ -423,34 +422,33 @@ function BasePage({ ble }) {
             <div className="dpad-row">
               <button 
                 className={`control-btn direction-btn down-btn ${activeButton === 'backward' ? 'active' : ''}`}
-                onPointerDown={() => handleButtonPress(BASE_COMMANDS.BACKWARD, 'backward')}
-                onPointerUp={handleButtonRelease}
-                onPointerLeave={handleButtonRelease}
+                onPointerDown={() => startCommand(BASE_COMMANDS.BACKWARD, 'backward')}
+                onPointerUp={stopCommand}
+                onPointerLeave={stopCommand}
               >
                 <Icons.Down />
               </button>
             </div>
           </div>
-          <div className="instruction">Click or use Arrow Keys/WASD</div>
+          <div className="instruction">Click & Hold or WASD</div>
         </div>
 
-        {/* Rotation Controls */}
         <div className="control-section">
           <h3>Rotation</h3>
           <div className="rotate-group">
             <button 
               className={`control-btn rotate-btn ${activeButton === 'rotateLeft' ? 'active' : ''}`}
-              onPointerDown={() => handleButtonPress(BASE_COMMANDS.ROTATE_LEFT, 'rotateLeft')}
-              onPointerUp={handleButtonRelease}
-              onPointerLeave={handleButtonRelease}
+              onPointerDown={() => startCommand(BASE_COMMANDS.ROTATE_LEFT, 'rotateLeft')}
+              onPointerUp={stopCommand}
+              onPointerLeave={stopCommand}
             >
               ↺
             </button>
             <button 
               className={`control-btn rotate-btn ${activeButton === 'rotateRight' ? 'active' : ''}`}
-              onPointerDown={() => handleButtonPress(BASE_COMMANDS.ROTATE_RIGHT, 'rotateRight')}
-              onPointerUp={handleButtonRelease}
-              onPointerLeave={handleButtonRelease}
+              onPointerDown={() => startCommand(BASE_COMMANDS.ROTATE_RIGHT, 'rotateRight')}
+              onPointerUp={stopCommand}
+              onPointerLeave={stopCommand}
             >
               ↻
             </button>
@@ -458,54 +456,19 @@ function BasePage({ ble }) {
           <div className="instruction">Hold Q/E keys</div>
         </div>
 
-        {/* Stop Button */}
         <div className="control-section">
           <h3>Emergency Stop</h3>
           <button 
             className="control-btn stop-btn"
-            onClick={() => {
-              setActiveButton(null);
-              sendCmd(BASE_COMMANDS.STOP);
+            onPointerDown={() => {
+              setActiveButton('stop');
+              stopCommand();
             }}
+            onPointerUp={() => setActiveButton(null)}
           >
             STOP
           </button>
-          <div className="instruction">Spacebar or click</div>
-        </div>
-      </div>
-
-      {/* Keyboard Shortcuts Help */}
-      <div className="keyboard-help">
-        <h4>Keyboard Shortcuts:</h4>
-        <div className="shortcut-grid">
-          <div className="shortcut-item">
-            <span className="key">W / ↑</span>
-            <span className="action">Forward</span>
-          </div>
-          <div className="shortcut-item">
-            <span className="key">S / ↓</span>
-            <span className="action">Backward</span>
-          </div>
-          <div className="shortcut-item">
-            <span className="key">A / ←</span>
-            <span className="action">Left</span>
-          </div>
-          <div className="shortcut-item">
-            <span className="key">D / →</span>
-            <span className="action">Right</span>
-          </div>
-          <div className="shortcut-item">
-            <span className="key">Q</span>
-            <span className="action">Rotate Left</span>
-          </div>
-          <div className="shortcut-item">
-            <span className="key">E</span>
-            <span className="action">Rotate Right</span>
-          </div>
-          <div className="shortcut-item">
-            <span className="key">Space</span>
-            <span className="action">Stop</span>
-          </div>
+          <div className="instruction">Spacebar</div>
         </div>
       </div>
       
@@ -579,6 +542,7 @@ function Layout({ ble, children }) {
           font-family: var(--font-main);
           overflow-x: hidden;
           -webkit-tap-highlight-color: transparent;
+          user-select: none; /* Prevent text selection during long press */
         }
 
         .app-shell { display: flex; flex-direction: column; min-height: 100vh; background-image: radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 70%); }
@@ -592,17 +556,8 @@ function Layout({ ble, children }) {
           position: sticky; top: 0; z-index: 50;
         }
         
-        .header-actions {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        
-        .disconnect-btn {
-          background: var(--danger);
-          color: white;
-        }
-        
+        .header-actions { display: flex; align-items: center; gap: 10px; }
+        .disconnect-btn { background: var(--danger); color: white; }
         .main-content { flex: 1; padding: 20px; max-width: 1000px; margin: 0 auto; width: 100%; position: relative; }
         
         h1, h2, h3, h4 { margin: 0; letter-spacing: -0.02em; }
@@ -681,6 +636,7 @@ function Layout({ ble, children }) {
           font-weight: 600;
           -webkit-user-select: none;
           user-select: none;
+          -webkit-touch-callout: none; /* Disable context menu on mobile */
         }
 
         .control-btn.active {
@@ -690,124 +646,46 @@ function Layout({ ble, children }) {
           transform: scale(0.95);
         }
 
-        .control-btn:active {
-          transform: scale(0.95);
-        }
+        .control-btn:active { transform: scale(0.95); }
 
-        /* D-Pad Styles */
-        .dpad-container {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 8px;
-        }
+        .dpad-container { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .dpad-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
 
-        .dpad-row {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-        }
-
-        .direction-btn {
-          width: 80px;
-          height: 80px;
-          border-radius: 12px;
-          font-size: 1.5rem;
-        }
-
+        .direction-btn { width: 80px; height: 80px; border-radius: 12px; font-size: 1.5rem; }
         .up-btn { border-radius: 12px 12px 4px 4px; }
         .down-btn { border-radius: 4px 4px 12px 12px; }
         .left-btn { border-radius: 12px 4px 4px 12px; }
         .right-btn { border-radius: 4px 12px 12px 4px; }
+        .center-spacer { width: 80px; height: 80px; }
 
-        .center-spacer {
-          width: 80px;
-          height: 80px;
-        }
+        .rotate-group { display: flex; gap: 20px; justify-content: center; }
+        .rotate-btn { width: 100px; height: 100px; border-radius: 50%; font-size: 2rem; font-weight: bold; }
 
-        /* Rotation Buttons */
-        .rotate-group {
-          display: flex;
-          gap: 20px;
-          justify-content: center;
-        }
-
-        .rotate-btn {
-          width: 100px;
-          height: 100px;
-          border-radius: 50%;
-          font-size: 2rem;
-          font-weight: bold;
-        }
-
-        /* Stop Button */
         .stop-btn {
-          width: 120px;
-          height: 120px;
-          border-radius: 50%;
-          background: var(--danger);
-          color: white;
-          font-size: 1.2rem;
-          font-weight: bold;
-          margin: 0 auto;
+          width: 120px; height: 120px; border-radius: 50%;
+          background: var(--danger); color: white;
+          font-size: 1.2rem; font-weight: bold; margin: 0 auto;
         }
+        .stop-btn:hover { background: #dc2626; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
 
-        .stop-btn:hover {
-          background: #dc2626;
-          box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
-        }
-
-        /* Keyboard Help */
         .keyboard-help {
-          margin-top: 40px;
-          background: var(--surface);
-          padding: 20px;
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.05);
+          margin-top: 40px; background: var(--surface); padding: 20px;
+          border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);
         }
-
-        .keyboard-help h4 {
-          margin-bottom: 16px;
-          color: var(--text-dim);
-          text-align: center;
-        }
-
-        .shortcut-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-          gap: 12px;
-        }
-
+        .keyboard-help h4 { margin-bottom: 16px; color: var(--text-dim); text-align: center; }
+        .shortcut-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
         .shortcut-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 8px 12px;
-          background: rgba(0,0,0,0.2);
-          border-radius: 6px;
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 8px 12px; background: rgba(0,0,0,0.2); border-radius: 6px;
         }
-
         .key {
-          background: var(--surface-light);
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-family: monospace;
-          font-size: 0.8rem;
-          font-weight: 600;
+          background: var(--surface-light); padding: 4px 8px; border-radius: 4px;
+          font-family: monospace; font-size: 0.8rem; font-weight: 600;
         }
-
-        .action {
-          color: var(--text-dim);
-          font-size: 0.9rem;
-        }
-
+        .action { color: var(--text-dim); font-size: 0.9rem; }
         .instruction {
-          font-size: 0.8rem;
-          color: var(--text-dim);
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-top: 12px;
+          font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase;
+          letter-spacing: 1px; margin-top: 12px;
         }
 
         .sliders-container { margin-top: 30px; display: grid; gap: 16px; }
@@ -838,71 +716,28 @@ function Layout({ ble, children }) {
           .app-header { padding: 0 16px; height: 60px; }
           .brand-text { display: none; }
           .brand-icon { font-size: 1.5rem; }
-          
           .nav-links { gap: 4px; }
           .nav-links a { font-size: 0.8rem; padding: 6px 12px; }
-          
           .status-badge .badge-label { display: none; }
           .status-badge { padding: 6px; border-radius: 50%; }
           .status-badge .dot { width: 10px; height: 10px; }
-          
           .glitch-text { font-size: 1.8rem; }
           .card-grid { grid-template-columns: 1fr; margin-top: 20px; }
-          
-          .button-controls-layout {
-            grid-template-columns: 1fr;
-            gap: 20px;
-          }
-          
-          .direction-btn {
-            width: 70px;
-            height: 70px;
-          }
-          
-          .center-spacer {
-            width: 70px;
-            height: 70px;
-          }
-          
-          .rotate-btn {
-            width: 80px;
-            height: 80px;
-            font-size: 1.5rem;
-          }
-          
-          .stop-btn {
-            width: 100px;
-            height: 100px;
-            font-size: 1rem;
-          }
-          
-          .shortcut-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          
+          .button-controls-layout { grid-template-columns: 1fr; gap: 20px; }
+          .direction-btn { width: 70px; height: 70px; }
+          .center-spacer { width: 70px; height: 70px; }
+          .rotate-btn { width: 80px; height: 80px; font-size: 1.5rem; }
+          .stop-btn { width: 100px; height: 100px; font-size: 1rem; }
+          .shortcut-grid { grid-template-columns: repeat(2, 1fr); }
           .tech-card { padding: 20px; }
-          .header-actions {
-            flex-direction: column;
-            gap: 5px;
-          }
-          .disconnect-btn {
-            font-size: 0.7rem;
-            padding: 4px 8px;
-          }
+          .header-actions { flex-direction: column; gap: 5px; }
+          .disconnect-btn { font-size: 0.7rem; padding: 4px 8px; }
         }
         
         @media (max-width: 380px) {
           .nav-links a { padding: 6px 8px; font-size: 0.75rem; }
-          
-          .direction-btn {
-            width: 60px;
-            height: 60px;
-          }
-          
-          .center-spacer {
-            width: 60px;
-            height: 60px;
-          }
+          .direction-btn { width: 60px; height: 60px; }
+          .center-spacer { width: 60px; height: 60px; }
         }
       `}</style>
     </div>
