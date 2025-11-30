@@ -1,10 +1,11 @@
-// App.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
 
-/* ---------- UUIDs (final) ---------- */
+/* ---------- UUIDs (Must match ESP32) ---------- */
 const BASE_SERVICE = "0000aaaa-0000-1000-8000-00805f9b34fb";
 const BASE_CHAR    = "0000aaab-0000-1000-8000-00805f9b34fb";
+
+// Arm UUIDs (If you add the arm code later)
 const ARM_SERVICE     = "0000bbbb-0000-1000-8000-00805f9b34fb";
 const ARM_ANGLES_CHAR = "0000bbbc-0000-1000-8000-00805f9b34fb";
 
@@ -46,10 +47,18 @@ function useBleState() {
   const [baseChar, setBaseChar] = useState(null);
   const [connectedDevice, setConnectedDevice] = useState({ arm: null, base: null });
 
+  // Helper to get error message
+  const handleError = (e) => {
+    console.error(e);
+    alert("Connection Error: " + e.message);
+  };
+
   const connectArm = async () => {
     try {
+      console.log("Requesting Arm Device...");
       const device = await navigator.bluetooth.requestDevice({ 
-        filters: [{ name: "OmniBot_2.5A" }],
+        // FIX: Accept all devices to ensure we see the ESP32
+        acceptAllDevices: true,
         optionalServices: [ARM_SERVICE, BASE_SERVICE]
       });
       
@@ -60,7 +69,6 @@ function useBleState() {
       setArmCharAngles(char);
       setConnectedDevice(prev => ({ ...prev, arm: device }));
       
-      // Handle disconnection
       device.addEventListener('gattserverdisconnected', () => {
         setArmCharAngles(null);
         setConnectedDevice(prev => ({ ...prev, arm: null }));
@@ -68,15 +76,16 @@ function useBleState() {
       
       return char;
     } catch (e) {
-      console.error("connectArm:", e);
-      throw e;
+      handleError(e);
     }
   };
 
   const connectBase = async () => {
     try {
+      console.log("Requesting Base Device...");
       const device = await navigator.bluetooth.requestDevice({ 
-        filters: [{ name: "OmniBot_2.5A" }],
+        // FIX: Accept all devices to ensure we see the ESP32
+        acceptAllDevices: true,
         optionalServices: [BASE_SERVICE, ARM_SERVICE]
       });
       
@@ -87,7 +96,6 @@ function useBleState() {
       setBaseChar(char);
       setConnectedDevice(prev => ({ ...prev, base: device }));
       
-      // Handle disconnection
       device.addEventListener('gattserverdisconnected', () => {
         setBaseChar(null);
         setConnectedDevice(prev => ({ ...prev, base: null }));
@@ -95,14 +103,17 @@ function useBleState() {
       
       return char;
     } catch (e) {
-      console.error("connectBase:", e);
-      throw e;
+      handleError(e);
     }
   };
 
   const disconnectAll = () => {
-    if (connectedDevice.arm) connectedDevice.arm.gatt.disconnect();
-    if (connectedDevice.base) connectedDevice.base.gatt.disconnect();
+    if (connectedDevice.arm) {
+      if (connectedDevice.arm.gatt.connected) connectedDevice.arm.gatt.disconnect();
+    }
+    if (connectedDevice.base) {
+       if (connectedDevice.base.gatt.connected) connectedDevice.base.gatt.disconnect();
+    }
     setArmCharAngles(null);
     setBaseChar(null);
     setConnectedDevice({ arm: null, base: null });
@@ -123,15 +134,11 @@ function StatusBadge({ connected, label }) {
 }
 
 function ConnectionPage({ ble }) {
-  const navigate = useLocation();
+  const navigate = useNavigate(); // FIX: used useNavigate instead of useLocation for navigation
   
   const handleConnect = async (type) => {
-    try {
-      if (type === 'arm') await ble.connectArm();
-      if (type === 'base') await ble.connectBase();
-    } catch (e) {
-      alert(`${type.toUpperCase()} connection failed or cancelled`);
-    }
+    if (type === 'arm') await ble.connectArm();
+    if (type === 'base') await ble.connectBase();
   };
 
   return (
@@ -293,7 +300,7 @@ function BasePage({ ble }) {
     // Don't send the same command repeatedly
     if (lastSentCmdRef.current === cmd) return;
     
-    // Throttle sending frequency
+    // Throttle sending frequency (prevents flooding ESP32)
     const now = Date.now();
     if (now - lastSendTimeRef.current < 50) return;
     
@@ -322,50 +329,42 @@ function BasePage({ ble }) {
   // Add keyboard controls
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Prevent default scrolling for arrows/space
+      if(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+        e.preventDefault();
+      }
+
       switch(e.key) {
         case 'ArrowUp':
-        case 'w':
-        case 'W':
-          e.preventDefault();
+        case 'w': case 'W':
           handleButtonPress(BASE_COMMANDS.FORWARD, 'forward');
           break;
         case 'ArrowDown':
-        case 's':
-        case 'S':
-          e.preventDefault();
+        case 's': case 'S':
           handleButtonPress(BASE_COMMANDS.BACKWARD, 'backward');
           break;
         case 'ArrowLeft':
-        case 'a':
-        case 'A':
-          e.preventDefault();
+        case 'a': case 'A':
           handleButtonPress(BASE_COMMANDS.LEFT, 'left');
           break;
         case 'ArrowRight':
-        case 'd':
-        case 'D':
-          e.preventDefault();
+        case 'd': case 'D':
           handleButtonPress(BASE_COMMANDS.RIGHT, 'right');
           break;
-        case 'q':
-        case 'Q':
-          e.preventDefault();
+        case 'q': case 'Q':
           handleButtonPress(BASE_COMMANDS.ROTATE_LEFT, 'rotateLeft');
           break;
-        case 'e':
-        case 'E':
-          e.preventDefault();
+        case 'e': case 'E':
           handleButtonPress(BASE_COMMANDS.ROTATE_RIGHT, 'rotateRight');
           break;
         case ' ':
-          e.preventDefault();
           handleButtonRelease();
           break;
       }
     };
 
     const handleKeyUp = (e) => {
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'W', 's', 'S', 'a', 'A', 'd', 'D', 'q', 'Q', 'e', 'E'].includes(e.key)) {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'W', 's', 'S', 'a', 'A', 'd', 'D', 'q', 'Q', 'e', 'E', ' '].includes(e.key)) {
         e.preventDefault();
         handleButtonRelease();
       }
