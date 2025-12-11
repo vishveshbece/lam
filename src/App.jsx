@@ -14,23 +14,23 @@ const ARM_LIMITS = [
   { min: 100, max: 180, label: "Shoulder" },
   { min: 0,   max: 90,  label: "Elbow" },
   { min: 0,   max: 180, label: "Wrist V" },
-  { min: 0,   max: 180, label: "Wrist R" },
+  { min: 37,   max: 120, label: "Wrist R" },
 ];
-const DEFAULT_ARM_ANGLES = [90, 120, 45, 90, 90];
+const DEFAULT_ARM_ANGLES = [90, 120, 45, 90, 45];
 
 /* ---------- COMMAND MAPPING (Updated) ---------- */
 const BASE_COMMANDS = {
   STOP: 0,
-  FORWARD: 1,
-  BACKWARD: 2,
-  LEFT: 3,        // Strafe Left
-  RIGHT: 4,       // Strafe Right
+  FORWARD: 2,
+  BACKWARD: 1,
+  LEFT: 4,        // Strafe Left
+  RIGHT: 3,       // Strafe Right
   ROTATE_LEFT: 5,
   ROTATE_RIGHT: 6,
-  FORWARD_LEFT: 7,
-  FORWARD_RIGHT: 8,
-  BACKWARD_LEFT: 9,
-  BACKWARD_RIGHT: 10
+  FORWARD_LEFT: 9,
+  FORWARD_RIGHT: 10,
+  BACKWARD_LEFT: 8,
+  BACKWARD_RIGHT: 7
 };
 
 /* ---------- ICONS ---------- */
